@@ -6,27 +6,30 @@ import os
 
 # --- 1. NEW SECURE GATEKEEPER ---
 def check_password():
-    def password_entered():
-        # This line now looks at the SYSTEM environment instead of hardcoded text
-        correct_password = os.getenv("APP_PASSWORD", "TemporaryFallback123")
-        
-        if st.session_state["password"] == correct_password:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
+    """Returns True if the user had the correct password."""
+    # Initialize state
     if "password_correct" not in st.session_state:
-        st.title("🔒 Secure Access Required")
-        st.text_input("Enter Access Password", type="password", on_change=password_entered, key="password")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.title("🔒 Secure Access Required")
-        st.text_input("Enter Access Password", type="password", on_change=password_entered, key="password")
-        st.error("😕 Password incorrect")
-        return False
-    else:
+        st.session_state["password_correct"] = False
+
+    # If already logged in, just return True
+    if st.session_state["password_correct"]:
         return True
+
+    # Show login form
+    st.title("🔐 Secure Access Required")
+    password_input = st.text_input("Enter Access Password", type="password")
+    
+    if password_input:
+        # Get correct password from ENV or Fallback
+        correct_pw = os.getenv("APP_PASSWORD", "TemporaryFallback123").strip()
+        
+        if password_input.strip() == correct_pw:
+            st.session_state["password_correct"] = True
+            st.rerun() # Refresh the page to show the dashboard
+        else:
+            st.error("😕 Password incorrect")
+            
+    return False
 
 if not check_password():
     st.stop()
