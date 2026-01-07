@@ -6,8 +6,10 @@ import os
 import warnings
 from datetime import timedelta
 
-# Silence the openpyxl style warning in logs
+# --- SILENCE ALL LOG NOISE ---
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+warnings.filterwarnings("ignore", category=FutureWarning)
+pd.options.mode.chained_assignment = None  # Explicitly kill SettingWithCopyWarning
 
 # --- 1. SECURE GATEKEEPER ---
 def check_password():
@@ -38,9 +40,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def calculate_mttr_data(df, start_col, end_col):
-    df[start_col] = pd.to_datetime(df[start_col], errors='coerce')
-    df[end_col] = pd.to_datetime(df[end_col], errors='coerce')
-    clean_df = df.dropna(subset=[start_col, end_col]).copy()
+    # Work on a deep copy to prevent slice warnings
+    working_df = df.copy()
+    working_df[start_col] = pd.to_datetime(working_df[start_col], errors='coerce')
+    working_df[end_col] = pd.to_datetime(working_df[end_col], errors='coerce')
+    clean_df = working_df.dropna(subset=[start_col, end_col]).copy()
     
     def apply_8hr_logic(row):
         duration = row[end_col] - row[start_col]
@@ -95,13 +99,17 @@ if check_password():
                 kpi_target = st.number_input("KPI Target (Days)", min_value=1, value=5)
 
             if st.button("🚀 UPDATE REPORT"):
-                df[start_col] = pd.to_datetime(df[start_col], errors='coerce')
-                ref_date = df[start_col].max()
-                f_df = df.copy()
+                temp_df = df.copy()
+                temp_df[start_col] = pd.to_datetime(temp_df[start_col], errors='coerce')
+                ref_date = temp_df[start_col].max()
+                
                 if time_filter != "All Data":
                     days_map = {"Today": 0, "Yesterday": 1, "Last 7 Days": 7, "Last 30 Days": 30, "Last 90 Days": 90}
                     cutoff = ref_date - timedelta(days=days_map[time_filter])
-                    f_df = df[df[start_col] >= cutoff] if time_filter != "Yesterday" else df[df[start_col].dt.date == cutoff.date()]
+                    f_df = temp_df[temp_df[start_col] >= cutoff] if time_filter != "Yesterday" else temp_df[temp_df[start_col].dt.date == cutoff.date()]
+                else:
+                    f_df = temp_df
+
                 st.session_state.processed_df = calculate_mttr_data(f_df, start_col, end_col)
                 st.session_state.current_period = time_filter
                 st.session_state.mapped_grp = actual_grp_col
@@ -146,16 +154,17 @@ if check_password():
                     c_slow, c_fast = st.columns(2)
                     with c_slow:
                         st.subheader("🚨 Slowest Groups")
-                        st.dataframe(slow_gs, width="stretch") # FIX
+                        st.dataframe(slow_gs, use_container_width=True)
                     with c_fast:
                         st.subheader("⭐ Best Performers")
-                        st.dataframe(fast_gs, width="stretch") # FIX
+                        st.dataframe(fast_gs, use_container_width=True)
                     
                     st.subheader("📈 Investigative Trend Map")
                     fig = px.line(res.sort_values(start_col), x=start_col, y='Calculated_Days', markers=True, hover_data=[actual_id, actual_grp], labels={'Calculated_Days': 'Resolution Time (Days)', start_col: 'Date Created'}, title="Resolution Timeline (Days) vs. KPI Target")
                     fig.add_scatter(x=[res[start_col].min(), res[start_col].max()], y=[kpi_target, kpi_target], mode="lines", line=dict(color="red", dash="dash"), name=f"KPI Target ({kpi_target} Days)")
                     fig.update_layout(showlegend=True, legend_title_text='Metrics')
-                    st.plotly_chart(fig, width="stretch") # FIX
+                    # Correct Plotly call for 2026 Streamlit
+                    st.plotly_chart(fig, use_container_width=True)
                     
                     st.subheader("📄 Raw Calculation Data")
-                    st.dataframe(res, width="stretch") # FIX
+                    st.dataframe(res, use_container_width=True)
